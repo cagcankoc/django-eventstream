@@ -1,4 +1,3 @@
-import time
 import jwt
 import six
 from django.contrib.auth import get_user_model
@@ -39,24 +38,15 @@ class EventRequest(object):
 		is_recover = False
 		user = None
 
-		es_meta = {}
-		if http_request.GET.get('es-meta'):
-			es_meta = jwt.decode(http_request.GET['es-meta'], settings.SECRET_KEY.encode('utf-8'), algorithms=['HS256'])
-			if int(time.time()) >= es_meta['exp']:
-				raise ValueError('es-meta signature is expired')
+		try:
+			token = http_request.META.get('HTTP_AUTHORIZATION', " ").split(' ')[1]
+			payload = jwt.decode(token, settings.SECRET_KEY.encode('utf-8'), algorithms=['HS256'])
+			user = get_user_model().objects.get(user_id=payload['user_id'])
+		except Exception as e:
+			raise EventRequest.Error(str(e))
 
-		if 'user' in es_meta:
-			if es_meta['user'] != 'anonymous':
-				user = get_user_model().objects.get(pk=es_meta['user'])
-		else:
-			if hasattr(http_request, 'user') and http_request.user.is_authenticated:
-				user = http_request.user
-
-		if 'channels' in es_meta:
-			channels = es_meta['channels']
-		else:
-			channelmanager = get_channelmanager()
-			channels = channelmanager.get_channels_for_request(http_request, view_kwargs)
+		channelmanager = get_channelmanager()
+		channels = channelmanager.get_channels_for_request(http_request, view_kwargs)
 
 		if len(channels) < 1:
 			raise EventRequest.Error('No channels specified')
